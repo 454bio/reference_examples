@@ -1,12 +1,51 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "Model4.h"
-
+#include <string>
+#include <map>
+#include "EditDist.h"
 
 struct PhaseParams {
     double ie;
     double cf;
     double dr;
     double err;
+};
+
+struct SpotData {
+    std::vector<Signal> vals;
+    std::string spotName;
+};
+
+std::map<std::string,std::string> spotSeq = {
+    {"355", "ACGTGACTAGTGCATCACGTGACTAGTGCATC"},
+    {"357", "ATGCAGTCGACGTACTATGCAGTCGACGTACT"},
+    {"358", "CGTATCGACTATGCAGCGTATCGACTATGCAG"},
+    {"360", "GACTCGATGCTCAGTAGACTCGATGCTCAGTA"},
+    {"364", "TCAGTACGATGACTGCTCAGTACGATGACTGC"},
+    {"370", "ACGTGACTAGTGCATCACGTGACTAGTGCATC"},
+    {"372", "ATGCAGTCGACGTACTATGCAGTCGACGTACT"},
+    {"373", "CGTATCGACTATGCAGCGTATCGACTATGCAG"},
+    {"375", "GACTCGATGCTCAGTAGACTCGATGCTCAGTA"},
+    {"377", "GTCAGCTACGACTGATGTCAGCTACGACTGAT"},
+    {"379", "TCAGTACGATGACTGCTCAGTACGATGACTGC"},
+    {"574", "GGGGGGGGGGTAAGAA"},
+    {"575", "AAAAAAAAAATAAGAA"},
+    {"576", "CCCCCCCCCCTAAGAA"},
+    {"577", "TTTTTTTTTTTAAGAA"},
+    {"632", "AAATGCAGTCGACGTACTATGCAGTC"},
+    {"633", "CCCGTATCGACTATGCAGCGTATCGA"},
+    {"634", "GGGACTCGATGCTCAGTAGACTCGAT"},
+    {"635", "TTTCAGTACGATGACTGCTCAGTACG"},
+    {"648", "TTTGCATTAAGAAATTAAAAAAGCTAAAAAAAAAA"},
+    {"649", "AAAGCATTAAGAAATTAAAAAAGCTAAAAAAAAAA"},
+    {"650", "GGGGCATTAAGAAATTAAAAAAGCTAAAAAAAAAA"},
+    {"651", "CCCGCATTAAGAAATTAAAAAAGCTAAAAAAAAAA"},
+    {"657", "GGGCATCTCGTATGCC"},
+    {"662", "ACTGATCTCGTATGCC"},
+    {"663", "GCTGATCTCGTATGCC"},
+    {"664", "CAGCATCTCGTATGCC"},
+    {"665", "TCTGATCTCGTATGCC"}
 };
 
 void template2bases(char *dnaTemplate, char *basecalls)
@@ -41,7 +80,24 @@ std::vector<Signal> LoadCycleIntensities(const char *filename)
     return vals;
 }
 
-void LoadSpotData(const char *filename, std::vector<std::vector<Signal>> &spotData)
+std::vector<std::string> Parse(char *str, char delim)
+{
+    std::vector<std::string> tokens;
+    char *ptr = str;
+    while (ptr && *ptr != 0) {
+        char *delimPtr = strchr(ptr, delim);
+        if (delimPtr) {
+            *delimPtr = 0;
+            delimPtr++;
+        }
+        tokens.push_back(ptr);
+        ptr = delimPtr;
+    }
+
+    return tokens;
+}
+
+void LoadSpotData(const char *filename, std::vector<SpotData> &spotData)
 {
     std::vector<Signal> vals;
     int spotId;
@@ -49,6 +105,7 @@ void LoadSpotData(const char *filename, std::vector<std::vector<Signal>> &spotDa
     int cycle;
     Signal s;
     int lastSpotId = 0;
+    std::string spotName;
 
     FILE *fp = fopen(filename, "r");
     if (fp) {
@@ -56,30 +113,32 @@ void LoadSpotData(const char *filename, std::vector<std::vector<Signal>> &spotDa
         // read and ignore the header
         fgets(line, sizeof(line), fp);
         while (fgets(line, sizeof(line), fp)) {
-            // skip to the 4 values
-            char *ptr = line;
-            for(int i=0;i<3;i++) {
-                // find a comma, then skip over it
-                if (ptr)
-                    ptr = strchr(ptr, ',');
-                if (ptr)
-                    ptr++;
-            }
-            sscanf(ptr, "%lf,%lf,%lf,%lf", &s.v[0], &s.v[1], &s.v[2], &s.v[3]);
-            sscanf(line, "%d", &spotId);
+            std::vector<std::string> tokens = Parse(line, ',');
+            spotId = atoi(tokens[0].c_str());
+            // if spot id is different, save the last spot data and clear things out
             if (spotId != lastSpotId) {
                 if (lastSpotId != 0) {
-                    std::vector<Signal> v;
-                    v = vals;
-                    spotData.push_back(v);
+                    SpotData d;
+                    d.vals = vals;
+                    d.spotName = spotName;
+                    spotData.push_back(d);
                 }
                 lastSpotId = spotId;
                 vals.clear();
             }
+            // now read the new spot data and store
+            spotName = tokens[1];
+            for(int i=0;i<4;i++)
+                s.v[i] = atof(tokens[3+i].c_str());
             vals.push_back(s);
         }
         fclose(fp);
-        spotData.push_back(vals);
+
+        // save the last spot and vals
+        SpotData d;
+        d.vals = vals;
+        d.spotName = spotName;
+        spotData.push_back(d);
     }
 }
 
@@ -190,7 +249,7 @@ int main(int argc, char *argv[])
 {
     // load spots
     // std::vector<Signal> measuredSignal = LoadCycleIntensities("jmrdata1.csv");
-    std::vector<std::vector<Signal>> spotData;
+    std::vector<SpotData> spotData;
     LoadSpotData("color_transformed_spots.csv", spotData);
     int numSpots = spotData.size();
     printf("Loaded %d spots\n", numSpots);
@@ -199,9 +258,12 @@ int main(int argc, char *argv[])
     char dnaTemplate[1024];
     char basecalls[1024];
     for(int i=0;i<numSpots;i++) {
-        PhaseParams params = GridSearch(dnaTemplate, spotData[i]);
+        PhaseParams params = GridSearch(dnaTemplate, spotData[i].vals);
         template2bases(dnaTemplate, basecalls);
-        printf("spot: %d ie/cf/dr: %.3lf/%.3lf/%.3lf err: %.3lf template: %s\n", i, params.ie, params.cf, params.dr, params.err, basecalls);
+        std::string spotSequence = spotSeq[spotData[i].spotName];
+        int dist = distance(spotSequence.c_str(), strlen(basecalls), basecalls, strlen(basecalls));
+        printf("spot: %d ie/cf/dr: %.3lf/%.3lf/%.3lf err: %.3lf template: %s spot seq: %s dist: %d\n",
+            i, params.ie, params.cf, params.dr, params.err, basecalls, spotSequence.c_str(), dist);
     }
 
     // generate some interesting csv outputs
