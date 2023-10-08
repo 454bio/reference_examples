@@ -4,6 +4,7 @@
 #include <string>
 #include <map>
 #include "EditDist.h"
+#include <math.h>
 
 struct PhaseParams {
     double ie;
@@ -253,19 +254,76 @@ int main(int argc, char *argv[])
     LoadSpotData("color_transformed_spots.csv", spotData);
     int numSpots = spotData.size();
     printf("Loaded %d spots\n", numSpots);
+    int numCycles = spotData[0].vals.size();
 
     // grid-search phase-correct each spot
+    int numReadsAll = 0; // needs to be min 4 bases correct
+    double qualScoreAll = 0.0;
+
+    int numReadsHQ = 0;
+    double qualScoreHQ = 0.0;
+    double readLenHQ = 0;
+
+    int num6Q7 = 0;
+
     char dnaTemplate[1024];
     char basecalls[1024];
     for(int i=0;i<numSpots;i++) {
         PhaseParams params = GridSearch(dnaTemplate, spotData[i].vals);
         template2bases(dnaTemplate, basecalls);
         std::string spotSequence = spotSeq[spotData[i].spotName];
-        int dist = distance(spotSequence.c_str(), strlen(basecalls), basecalls, strlen(basecalls));
-        printf("spot: %d ie/cf/dr: %.3lf/%.3lf/%.3lf err: %.3lf template: %s spot seq: %s dist: %d\n",
-            i, params.ie, params.cf, params.dr, params.err, basecalls, spotSequence.c_str(), dist);
+        int len = strlen(basecalls);
+        int dist = distance(spotSequence.c_str(), len, basecalls, len);
+        double qualScore = -10.0 * log10((double)dist/(double)len);
+        printf("spot: %d ie/cf/dr: %.3lf/%.3lf/%.3lf err: %.3lf template: %s spot seq: %s dist: %d Q: %.3lf\n",
+            i, params.ie, params.cf, params.dr, params.err, basecalls, spotSequence.c_str(), dist, qualScore);
+
+        // see how long the read was until we make a 2nd error
+        int numErrors = 0;
+        int goodLen = 0;
+        int goodEditDist = 0;
+        for(int l=0;l<len && numErrors<2;l++) {
+            bool isError = (basecalls[l] != spotSequence.c_str()[l]);
+            if (isError)
+                numErrors++;
+            if (!isError && numErrors < 2) { // need to be careful here not to count an error towards the good readlength
+                goodLen = l;
+                goodEditDist = numErrors;
+            }
+        }
+
+        if (goodLen >= 4) {
+            if (goodEditDist == 0) { // I don't like this, but if our read ends with all errors, goodEditDist is 0 which puts our Q-score at +inf
+                goodEditDist++;
+                goodLen++;
+            }
+            double goodQualScore = -10.0 * log10((double)goodEditDist/(double)goodLen);
+            numReadsHQ++;
+            qualScoreHQ += goodQualScore;
+            readLenHQ += goodLen;
+        }
+
+        if (goodLen >= 6) {
+            num6Q7++;
+        }
+
+        // calc phred score and save some stats
+        // this is simply counting a 8 cycles and tracking reads at lease 50% correct
+        if (dist <= 4) {
+            numReadsAll++;
+            qualScoreAll += qualScore;
+        }
     }
 
-    // generate some interesting csv outputs
+    if (numReadsAll > 0)
+        qualScoreAll /= numReadsAll;
+    if (numReadsHQ > 0) {
+        qualScoreHQ /= numReadsHQ;
+        readLenHQ /= numReadsHQ;
+    }
+
+    printf("%d %d Q %.3lf\n", numReadsAll, numCycles, qualScoreAll);
+    printf("%d %.3lf Q %.3lf\n", numReadsHQ, readLenHQ, qualScoreHQ);
+    printf("%d 6 Q 7\n", num6Q7);
 }
 
