@@ -49,6 +49,8 @@ std::map<std::string,std::string> spotSeq = {
     {"665", "TCTGATCTCGTATGCC"}
 };
 
+std::vector<std::string> ref = {"662", "663", "664", "665"};
+
 void template2bases(char *dnaTemplate, char *basecalls)
 {
     char bases[] = {'G', 'C', 'A', 'T'};
@@ -214,13 +216,13 @@ PhaseParams GridSearch(char *dnaTemplate, std::vector<Signal> &measuredSignal)
     // grid-search first, then call based on lowest error
     double drmin = 0.01;
     double drmax = 0.03;
-    int    drnum = 10;
-    double iemin = 0.07;
-    double iemax = 0.12;
-    int    ienum = 20;
+    int    drnum = 5; // 10;
+    double iemin = 0.09;
+    double iemax = 0.15;
+    int    ienum = 12; // 20;
     double cfmin = 0.07;
     double cfmax = 0.12;
-    int    cfnum = 20;
+    int    cfnum = 10; // 20;
 
     int numCycles = measuredSignal.size();
     PhaseParams params;
@@ -248,10 +250,43 @@ PhaseParams GridSearch(char *dnaTemplate, std::vector<Signal> &measuredSignal)
 
 int main(int argc, char *argv[])
 {
+    const char *spotFile = "color_transformed_spots.csv";
+    bool gridsearch = true;
+    double ie = 0.0, cf = 0.0, dr = 0.0;
+
+    int argcc = 1;
+    while (argcc < argc) {
+        switch (argv[argcc][1]) {
+            case 'f':
+                argcc++;
+                spotFile = argv[argcc];
+            break;
+
+            case 'i':
+                gridsearch = false;
+                argcc++;
+                ie = atof(argv[argcc]);
+            break;
+
+            case 'c':
+                gridsearch = false;
+                argcc++;
+                cf = atof(argv[argcc]);
+            break;
+
+            case 'd':
+                gridsearch = false;
+                argcc++;
+                dr = atof(argv[argcc]);
+            break;
+        }
+        argcc++;
+    }
+
     // load spots
     // std::vector<Signal> measuredSignal = LoadCycleIntensities("jmrdata1.csv");
     std::vector<SpotData> spotData;
-    LoadSpotData("color_transformed_spots.csv", spotData);
+    LoadSpotData(spotFile, spotData);
     int numSpots = spotData.size();
     printf("Loaded %d spots\n", numSpots);
     int numCycles = spotData[0].vals.size();
@@ -268,15 +303,39 @@ int main(int argc, char *argv[])
 
     char dnaTemplate[1024];
     char basecalls[1024];
+    std::vector<double> qualScoreList;
     for(int i=0;i<numSpots;i++) {
-        PhaseParams params = GridSearch(dnaTemplate, spotData[i].vals);
+        PhaseParams params;
+        if (gridsearch)
+            params = GridSearch(dnaTemplate, spotData[i].vals);
+        else {
+            params.ie = ie;
+            params.cf = cf;
+            params.dr = dr;
+            params.err = CallBases(dnaTemplate, spotData[i].vals, params.ie, params.cf, params.dr);
+        }
         template2bases(dnaTemplate, basecalls);
-        std::string spotSequence = spotSeq[spotData[i].spotName];
+        // std::string spotSequence = spotSeq[spotData[i].spotName];
+        // map against reference genome
         int len = strlen(basecalls);
-        int dist = distance(spotSequence.c_str(), len, basecalls, len);
-        double qualScore = -10.0 * log10((double)dist/(double)len);
-        printf("spot: %d ie/cf/dr: %.3lf/%.3lf/%.3lf err: %.3lf template: %s spot seq: %s dist: %d Q: %.3lf\n",
-            i, params.ie, params.cf, params.dr, params.err, basecalls, spotSequence.c_str(), dist, qualScore);
+        int bestDist = -1;
+        int bestRef = -1;
+        for(int r=0;r<ref.size();r++) {
+            std::string spotSequence = spotSeq[ref[r]];
+            int dist = distance(spotSequence.c_str(), len, basecalls, len);
+            if (bestDist == -1 || dist < bestDist) {
+                bestDist = dist;
+                bestRef = r;
+            }
+        }
+        std::string spotSequence = spotSeq[ref[bestRef]];
+
+        int perfectLen = 0;
+        while (perfectLen < len && spotSequence[perfectLen] == basecalls[perfectLen]) perfectLen++;
+
+        double qualScore = -10.0 * log10((double)bestDist/(double)len);
+        printf("spot: %d ie/cf/dr: %.3lf/%.3lf/%.3lf err: %.3lf template: %s spot seq: %s dist: %d Q: %.3lf perfect: %d\n",
+            i, params.ie, params.cf, params.dr, params.err, basecalls, spotSequence.c_str(), bestDist, qualScore, perfectLen);
 
         // see how long the read was until we make a 2nd error
         int numErrors = 0;
@@ -309,7 +368,7 @@ int main(int argc, char *argv[])
 
         // calc phred score and save some stats
         // this is simply counting a 8 cycles and tracking reads at lease 50% correct
-        if (dist <= 4) {
+        if (bestDist <= 4) {
             numReadsAll++;
             qualScoreAll += qualScore;
         }
