@@ -18,6 +18,13 @@ def load_fasta(filename):
 
     return genome, description
 
+def reverse_comp(read):
+    rcomp = {'A':'T', 'C':'G', 'G':'C', 'T':'A'}
+    rread = ''
+    for c in read[::-1]:
+        rread += rcomp[c]
+    return rread
+
 def bases2vals(bases):
     valdict = {'A':'0', 'C':'1', 'G':'2', 'T':'3'}
     vals = ''
@@ -44,17 +51,21 @@ def generate_hashlist(genome, hash_len):
 
 def map_read(genome, read, hash_list, hash_len):
     # for each genome position in the hash list, compute edit distance for read, return the position & edit distance of the best match
-    hash_index = int(bases2vals(read[:hash_len]), 4)
     bestdist = -1
     bestpos = -1
-    for pos in hash_list[hash_index]:
-        readlen = len(read)
-        dist = editdistance.eval(genome[pos:pos+readlen], read)
-        if bestdist == -1 or dist < bestdist:
-            bestdist = dist
-            bestpos = pos
+    rcomp = False
+    readlen = len(read)
+    reads = [read, reverse_comp(read)]
+    for i, test_read in enumerate(reads):
+        hash_index = int(bases2vals(test_read[:hash_len]), 4)
+        for pos in hash_list[hash_index]:
+            dist = editdistance.eval(genome[pos:pos+readlen], test_read)
+            if bestdist == -1 or dist < bestdist:
+                bestdist = dist
+                bestpos = pos
+                rcomp = (i == 1)
 
-    return bestpos,bestdist
+    return bestpos,bestdist,rcomp
 
 # set some defaults
 ref_name = 'phix174.fasta'
@@ -63,7 +74,7 @@ in_filename = None
 out_filename = None
 hash_len = 4
 
-# parce cmd-line args
+# parse cmd-line args
 argcc = 1
 argc = len(sys.argv)
 while argcc < argc:
@@ -113,9 +124,9 @@ if out_filename:
 
 print('mapping reads...')
 for read in reads:
-    pos,dist = map_read(ref, read, hash_list, hash_len)
+    pos,dist,rcomp = map_read(ref, read, hash_list, hash_len)
     if pos > -1:
-        outtxt = 'read: %s  ref: %s  pos: %d  dist: %d' % (read, ref[pos:pos+len(read)], pos, dist)
+        outtxt = 'read: %s  ref: %s  rcomp: %s  pos: %d  dist: %d' % (read, ref[pos:pos+len(read)], rcomp, pos, dist)
         if outfile:
             outfile.write('%s\n' % outtxt)
         else:

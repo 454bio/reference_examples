@@ -18,9 +18,16 @@ def load_fasta(filename):
 
     return genome, description
 
+def reverse_comp(read):
+    rcomp = {'A':'T', 'C':'G', 'G':'C', 'T':'A'}
+    rread = ''
+    for c in read[::-1]:
+        rread += rcomp[c]
+    return rread
+
 # generates normally distributed readlengths of reads covering a uniform genome at the specified depth
 def generate_reads(genome, mean_length, coverage_mult):
-    reads = []
+    info = []
     genome_len = len(genome)
     num_reads = int(coverage_mult*genome_len/mean_length)
     rnd = np.random.default_rng(454)
@@ -28,13 +35,21 @@ def generate_reads(genome, mean_length, coverage_mult):
         # pick a uniform random start location in the genome
         start = rnd.integers(genome_len-mean_length)
         length = mean_length + int(mean_length*0.2*rnd.normal(0, 1))
-        reads.append(genome[start:start+length])
-    return reads
+        read = genome[start:start+length]
+        # determine reverse compliment or normal 50/50 chance
+        rcomp = False
+        if rnd.normal(0, 1) > 0.0:
+            read = reverse_comp(read)
+            rcomp = True
+        info.append({'read':read, 'rcomp':rcomp, 'start':start, 'length':length})
+    return info
 
-def generate_errors(read):
+def generate_errors(read,rcomp):
     bases = 'ACGT'
-    pos = 4 # start at the 5th position assuming the first 4 bases are always 100% correct
-    readlen = len(read)
+    readlen = len(read) - 4 # we will assume the first 4 bases are always 100% correct
+    pos = 4
+    if rcomp:
+        pos = 0
     rnd = np.random.default_rng(1134)
     read = list(read)
     while pos < readlen:
@@ -73,20 +88,21 @@ if verbose > 0:
     print('loaded ref: %s\nlength: %d\n' % (description, len(ref)))
 
 # generate some random reads from it
-reads = generate_reads(ref, 200, 3) # mean 200bp at 3x coverage
+info = generate_reads(ref, 200, 3) # mean 200bp at 3x coverage
 
 # truncate the reads to our num cycles
-for i in range(len(reads)):
-    reads[i] = reads[i][:num_cycles]
+reads = []
+for i in range(len(info)):
+    reads.append(info[i]['read'][:num_cycles])
 
 # add some random errors
 for i in range(len(reads)):
-    reads[i] = generate_errors(reads[i])
+    reads[i] = generate_errors(reads[i], info[i]['rcomp'])
 
 if verbose > 1:
-    print('first few reads:')
-    for r in range(20):
-        print('%s' % reads[r])
+    print('raw read info:')
+    for r in range(len(reads)):
+        print('raw read: %s read: %s start: %d len: %d rcomp: %s' % (info[r]['read'][:num_cycles], reads[r], info[r]['start'], info[r]['length'], info[r]['rcomp']))
 
 # dump the reads to a file
 if out_filename is not None:
