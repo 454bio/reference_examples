@@ -53,19 +53,15 @@ def map_read(genome, read, hash_list, hash_len):
     # for each genome position in the hash list, compute edit distance for read, return the position & edit distance of the best match
     bestdist = -1
     bestpos = -1
-    rcomp = False
     readlen = len(read)
-    reads = [read, reverse_comp(read)]
-    for i, test_read in enumerate(reads):
-        hash_index = int(bases2vals(test_read[:hash_len]), 4)
-        for pos in hash_list[hash_index]:
-            dist = editdistance.eval(genome[pos:pos+readlen], test_read)
-            if bestdist == -1 or dist < bestdist:
-                bestdist = dist
-                bestpos = pos
-                rcomp = (i == 1)
+    hash_index = int(bases2vals(read[:hash_len]), 4)
+    for pos in hash_list[hash_index]:
+        dist = editdistance.eval(genome[pos:pos+readlen], read)
+        if bestdist == -1 or dist < bestdist:
+            bestdist = dist
+            bestpos = pos
 
-    return bestpos,bestdist,rcomp
+    return bestpos,bestdist
 
 # set some defaults
 ref_name = 'phix174.fasta'
@@ -117,6 +113,8 @@ if verbose > 1:
 # generate hash list from genome and map reads
 print('generating hash list...')
 hash_list = generate_hashlist(ref, hash_len)
+ref_r = reverse_comp(ref)
+hash_list_r = generate_hashlist(ref_r, hash_len)
 
 outfile = None
 if out_filename:
@@ -124,9 +122,17 @@ if out_filename:
 
 print('mapping reads...')
 for read in reads:
-    pos,dist,rcomp = map_read(ref, read, hash_list, hash_len)
+    rcomp = False
+    # we map to both the forward and the reverse complement of the read, to see which is the best match
+    pos,dist = map_read(ref, read, hash_list, hash_len)
+    pos_r,dist_r = map_read(ref_r, read, hash_list_r, hash_len)
+    if dist_r < dist:
+        dist = dist_r
+        pos = pos_r
+        rcomp = True
     if pos > -1:
-        outtxt = 'read: %s  ref: %s  rcomp: %s  pos: %d  dist: %d' % (read, ref[pos:pos+len(read)], rcomp, pos, dist)
+        ref_read = ref_r[pos:pos+len(read)] if rcomp else ref[pos:pos+len(read)]
+        outtxt = 'read: %s  ref: %s  rcomp: %s  pos: %d  dist: %d' % (read, ref_read, rcomp, pos, dist)
         if outfile:
             outfile.write('%s\n' % outtxt)
         else:

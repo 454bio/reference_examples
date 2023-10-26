@@ -36,7 +36,7 @@ def generate_reads(genome, mean_length, coverage_mult):
         start = rnd.integers(genome_len-mean_length)
         length = mean_length + int(mean_length*0.2*rnd.normal(0, 1))
         read = genome[start:start+length]
-        # determine reverse compliment or normal 50/50 chance
+        # determine reverse complement or normal 50/50 chance
         rcomp = False
         if rnd.normal(0, 1) > 0.0:
             read = reverse_comp(read)
