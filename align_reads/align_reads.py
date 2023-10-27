@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import math
 import editdistance
+import sam_utils
 
 # simple function to load a fasta file
 def load_fasta(filename):
@@ -119,9 +120,16 @@ hash_list_r = generate_hashlist(ref_r, hash_len)
 outfile = None
 if out_filename:
     outfile = open(out_filename, 'w') 
+    sam_filename = out_filename.split('.')[0] + '.sam'
+else:
+    sam_filename = 'out.sam'
+
+# map reads and write sam file
+
+sam = sam_utils.SamUtils(sam_filename)
 
 print('mapping reads...')
-for read in reads:
+for i, read in enumerate(reads):
     rcomp = False
     # we map to both the forward and the reverse complement of the read, to see which is the best match
     pos,dist = map_read(ref, read, hash_list, hash_len)
@@ -137,6 +145,9 @@ for read in reads:
             outfile.write('%s\n' % outtxt)
         else:
             print(outtxt)
+
+        read_name = 'read_' + str(i)
+        sam.AddRead(read, pos, ref_read, read_name)
 
 if outfile:
     outfile.close()
