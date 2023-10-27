@@ -3,6 +3,9 @@ import numpy as np
 import math
 import editdistance
 
+# global random number generator
+rndg = np.random.default_rng(1134)
+
 # simple function to load a fasta file
 def load_fasta(filename):
     genome = ''
@@ -26,10 +29,9 @@ def reverse_comp(read):
     return rread
 
 # generates normally distributed readlengths of reads covering a uniform genome at the specified depth
-def generate_reads(genome, mean_length, coverage_mult):
+def generate_reads(genome, mean_length, num_reads):
     info = []
     genome_len = len(genome)
-    num_reads = int(coverage_mult*genome_len/mean_length)
     rnd = np.random.default_rng(454)
     for r in range(num_reads):
         # pick a uniform random start location in the genome
@@ -44,17 +46,14 @@ def generate_reads(genome, mean_length, coverage_mult):
         info.append({'read':read, 'rcomp':rcomp, 'start':start, 'length':length})
     return info
 
-def generate_errors(read,rcomp):
+def generate_errors(read):
     bases = 'ACGT'
     readlen = len(read) - 4 # we will assume the first 4 bases are always 100% correct
     pos = 4
-    if rcomp:
-        pos = 0
-    rnd = np.random.default_rng(1134)
     read = list(read)
     while pos < readlen:
-        if rnd.random() > 0.8: # 20% chance of error
-            newbase = rnd.integers(4) # range is 0 to 3 inclusive
+        if rndg.random() > 0.9: # 10% chance of error
+            newbase = rndg.integers(4) # range is 0 to 3 inclusive
             read[pos] = bases[newbase]
         pos += 1
     return ''.join(read)
@@ -88,7 +87,7 @@ if verbose > 0:
     print('loaded ref: %s\nlength: %d\n' % (description, len(ref)))
 
 # generate some random reads from it
-info = generate_reads(ref, 200, 3) # mean 200bp at 3x coverage
+info = generate_reads(ref, 200, 10000) # mean 200bp at 3x coverage
 
 # truncate the reads to our num cycles
 reads = []
@@ -97,7 +96,7 @@ for i in range(len(info)):
 
 # add some random errors
 for i in range(len(reads)):
-    reads[i] = generate_errors(reads[i], info[i]['rcomp'])
+    reads[i] = generate_errors(reads[i])
 
 if verbose > 1:
     print('raw read info:')

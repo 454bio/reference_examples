@@ -55,7 +55,7 @@ def map_read(genome, read, hash_list, hash_len):
     bestdist = -1
     bestpos = -1
     readlen = len(read)
-    hash_index = int(bases2vals(read[:hash_len]), 4)
+    hash_index = int(bases2vals(read[:hash_len]), 4) # cool python way to convert a base-4 string to a base-10 integer
     for pos in hash_list[hash_index]:
         dist = editdistance.eval(genome[pos:pos+readlen], read)
         if bestdist == -1 or dist < bestdist:
@@ -140,14 +140,16 @@ for i, read in enumerate(reads):
         rcomp = True
     if pos > -1:
         ref_read = ref_r[pos:pos+len(read)] if rcomp else ref[pos:pos+len(read)]
-        outtxt = 'read: %s  ref: %s  rcomp: %s  pos: %d  dist: %d' % (read, ref_read, rcomp, pos, dist)
-        if outfile:
-            outfile.write('%s\n' % outtxt)
+        if len(ref_read) == len(read):
+            outtxt = 'read: %s  ref: %s  rcomp: %s  pos: %d  dist: %d' % (read, ref_read, rcomp, pos, dist)
+            if outfile:
+                outfile.write('%s\n' % outtxt)
+            else:
+                print(outtxt)
+            read_name = 'read_' + str(i)
+            sam.AddRead(read, pos, ref_read, read_name)
         else:
-            print(outtxt)
-
-        read_name = 'read_' + str(i)
-        sam.AddRead(read, pos, ref_read, read_name)
+            print('failed to align read: %s to valid reference position' % read)
 
 if outfile:
     outfile.close()
