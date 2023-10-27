@@ -46,13 +46,13 @@ def generate_reads(genome, mean_length, num_reads):
         info.append({'read':read, 'rcomp':rcomp, 'start':start, 'length':length})
     return info
 
-def generate_errors(read):
+def generate_errors(read, err_rate):
     bases = 'ACGT'
     readlen = len(read) - 4 # we will assume the first 4 bases are always 100% correct
     pos = 4
     read = list(read)
     while pos < readlen:
-        if rndg.random() > 0.9: # 10% chance of error
+        if rndg.random() > (1.0-err_rate): # % chance of error
             newbase = rndg.integers(4) # range is 0 to 3 inclusive
             read[pos] = bases[newbase]
         pos += 1
@@ -63,6 +63,7 @@ ref_name = 'phix174.fasta'
 verbose = 0
 out_filename = None
 num_cycles = 30
+err_rate = 0.2
 
 # parce cmd-line args
 argcc = 1
@@ -77,6 +78,9 @@ while argcc < argc:
     if sys.argv[argcc] == '--cycles':
         argcc += 1
         num_cycles = int(sys.argv[argcc])
+    if sys.argv[argcc] == '--err_rate':
+        argcc += 1
+        err_rate = float(sys.argv[argcc])
     if sys.argv[argcc] == '-v':
         verbose += 1
     argcc += 1
@@ -96,7 +100,7 @@ for i in range(len(info)):
 
 # add some random errors
 for i in range(len(reads)):
-    reads[i] = generate_errors(reads[i])
+    reads[i] = generate_errors(reads[i], err_rate)
 
 if verbose > 1:
     print('raw read info:')

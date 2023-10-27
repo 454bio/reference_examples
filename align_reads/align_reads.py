@@ -64,6 +64,18 @@ def map_read(genome, read, hash_list, hash_len):
 
     return bestpos,bestdist
 
+def eval_read(read, ref_read, num_errors):
+    err = 0
+    readlen = len(read)
+    maxlen = 0
+    while maxlen < readlen:
+        if read[maxlen] != ref_read[maxlen]:
+            err += 1
+        if err > num_errors:
+            break
+        maxlen += 1
+    return maxlen
+
 # set some defaults
 ref_name = 'phix174.fasta'
 verbose = 0
@@ -124,8 +136,10 @@ if out_filename:
 else:
     sam_filename = 'out.sam'
 
-# map reads and write sam file
+# some stats we will track while mapping
+num12Q10 = 0
 
+# map reads and write sam file
 sam = sam_utils.SamUtils(sam_filename)
 
 print('mapping reads...')
@@ -148,9 +162,16 @@ for i, read in enumerate(reads):
                 print(outtxt)
             read_name = 'read_' + str(i)
             sam.AddRead(read, pos, ref_read, read_name)
+
+            # calc some stats on the read
+            len1Error = eval_read(read, ref_read, 1) # the max length with only 1 error
+            if len1Error >= 12:
+                num12Q10 += 1
         else:
             print('failed to align read: %s to valid reference position' % read)
 
 if outfile:
     outfile.close()
+
+print('%d 12Q10' % num12Q10)
 
