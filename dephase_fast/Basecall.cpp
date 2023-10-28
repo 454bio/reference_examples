@@ -145,7 +145,7 @@ void LoadSpotData(const char *filename, std::vector<SpotData> &spotData)
     }
 }
 
-double CallBases(char *dnaTemplate, std::vector<Signal> &measuredSignal, double ie, double cf, double dr)
+double CallBases(char *dnaTemplate, std::vector<Signal> &measuredSignal, std::vector<double> &errorPerCycle, double ie, double cf, double dr)
 {
     int numCycles = measuredSignal.size();
 
@@ -155,7 +155,6 @@ double CallBases(char *dnaTemplate, std::vector<Signal> &measuredSignal, double 
 
     std::vector<Signal> dyeIntensities(numCycles);
     std::vector<double> totalSignal(numCycles, 0);
-    std::vector<double> errorPerCycle(numCycles, 0);
 
     memset(dnaTemplate, 0, 1024); // TODO really need to include size
     char bases[4] = {'A', 'C', 'G', 'T'};
@@ -211,7 +210,7 @@ double CallBases(char *dnaTemplate, std::vector<Signal> &measuredSignal, double 
     return cumulativeError;
 }
 
-PhaseParams GridSearch(char *dnaTemplate, std::vector<Signal> &measuredSignal)
+PhaseParams GridSearch(char *dnaTemplate, std::vector<Signal> &measuredSignal, std::vector<double> &errorPerCycle)
 {
     // grid-search first, then call based on lowest error
     double drmin = 0.01;
@@ -234,7 +233,7 @@ PhaseParams GridSearch(char *dnaTemplate, std::vector<Signal> &measuredSignal)
             double cftest = cfmin + (cfi/(double)(cfnum-1.0)) * (cfmax-cfmin);
             for(int iei=0;iei<ienum;iei++) {
                 double ietest = iemin + (iei/(double)(ienum-1.0)) * (iemax-iemin);
-                double err = CallBases(dnaTemplate, measuredSignal, ietest, cftest, drtest);
+                double err = CallBases(dnaTemplate, measuredSignal, errorPerCycle, ietest, cftest, drtest);
                 if (err < minerr) {
                     minerr = err;
                     params.ie = ietest;
@@ -244,7 +243,7 @@ PhaseParams GridSearch(char *dnaTemplate, std::vector<Signal> &measuredSignal)
             }
         }
     }
-    params.err = CallBases(dnaTemplate, measuredSignal, params.ie, params.cf, params.dr);
+    params.err = CallBases(dnaTemplate, measuredSignal, errorPerCycle, params.ie, params.cf, params.dr);
     return params;
 }
 
@@ -253,6 +252,7 @@ int main(int argc, char *argv[])
     const char *spotFile = "color_transformed_spots.csv";
     bool gridsearch = true;
     double ie = 0.0, cf = 0.0, dr = 0.0;
+    const char *fastQFileName = "out.fastq";
 
     int argcc = 1;
     while (argcc < argc) {
@@ -260,6 +260,11 @@ int main(int argc, char *argv[])
             case 'f':
                 argcc++;
                 spotFile = argv[argcc];
+            break;
+
+            case 'o':
+                argcc++;
+                fastQFileName = argv[argcc];
             break;
 
             case 'i':
@@ -301,18 +306,21 @@ int main(int argc, char *argv[])
 
     int num6Q7 = 0;
 
+    FILE *fastQFile = fopen(fastQFileName, "w");
+
     char dnaTemplate[1024];
     char basecalls[1024];
+    std::vector<double> errorPerCycle(numCycles, 0);
     std::vector<double> qualScoreList;
     for(int i=0;i<numSpots;i++) {
         PhaseParams params;
         if (gridsearch)
-            params = GridSearch(dnaTemplate, spotData[i].vals);
+            params = GridSearch(dnaTemplate, spotData[i].vals, errorPerCycle);
         else {
             params.ie = ie;
             params.cf = cf;
             params.dr = dr;
-            params.err = CallBases(dnaTemplate, spotData[i].vals, params.ie, params.cf, params.dr);
+            params.err = CallBases(dnaTemplate, spotData[i].vals, errorPerCycle, params.ie, params.cf, params.dr);
         }
         template2bases(dnaTemplate, basecalls);
         // std::string spotSequence = spotSeq[spotData[i].spotName];
@@ -330,12 +338,30 @@ int main(int argc, char *argv[])
         }
         std::string spotSequence = spotSeq[ref[bestRef]];
 
+        // assign a phred score to each base, using the error in measured vs predicted at each position
+        std::string qscores;
+        for(int c=0;c<numCycles;c++) {
+            double err = errorPerCycle[c] * 2.0; // range is 0.0 to 1.0, 0.0 is very high quality Q30, 1.0 is Q3 (50% prob)
+            if (err < 0.0) err = 0.0;
+            if (err > 1.0) err = 1.0;
+            double prob = 0.001 + err*(0.5-0.001);
+            int QScore = int(-10.0 * log10(prob)); // truncate down to be fair
+            char QChar = QScore + 33; // phred-33 encoding
+            qscores += QChar;
+        }
+
         int perfectLen = 0;
         while (perfectLen < len && spotSequence[perfectLen] == basecalls[perfectLen]) perfectLen++;
 
         double qualScore = -10.0 * log10((double)bestDist/(double)len);
-        printf("spot: %d ie/cf/dr: %.3lf/%.3lf/%.3lf err: %.3lf template: %s spot seq: %s dist: %d Q: %.3lf perfect: %d\n",
-            i, params.ie, params.cf, params.dr, params.err, basecalls, spotSequence.c_str(), bestDist, qualScore, perfectLen);
+        printf("spot: %d ie/cf/dr: %.3lf/%.3lf/%.3lf err: %.3lf template: %s qual: %s spot seq: %s dist: %d Q: %.3lf perfect: %d\n",
+            i, params.ie, params.cf, params.dr, params.err, basecalls, qscores.c_str(), spotSequence.c_str(), bestDist, qualScore, perfectLen);
+
+        if (fastQFile) {
+            if (perfectLen > 4) {
+                fprintf(fastQFile, "@spot_%06d\n%s\n+\n%s\n", i, basecalls, qscores.c_str());
+            }
+        }
 
         // see how long the read was until we make a 2nd error
         int numErrors = 0;
@@ -380,6 +406,9 @@ int main(int argc, char *argv[])
         qualScoreHQ /= numReadsHQ;
         readLenHQ /= numReadsHQ;
     }
+
+    if (fastQFile)
+        fclose(fastQFile);
 
     printf("%d %d Q %.3lf\n", numReadsAll, numCycles, qualScoreAll);
     printf("%d %.3lf Q %.3lf\n", numReadsHQ, readLenHQ, qualScoreHQ);
