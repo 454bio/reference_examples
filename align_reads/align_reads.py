@@ -64,17 +64,60 @@ def map_read(genome, read, hash_list, hash_len):
 
     return bestpos,bestdist
 
-def eval_read(read, ref_read, num_errors):
-    err = 0
-    readlen = len(read)
-    maxlen = 0
-    while maxlen < readlen:
-        if read[maxlen] != ref_read[maxlen]:
-            err += 1
-        if err > num_errors:
-            break
-        maxlen += 1
-    return maxlen
+def qualscore(readlen, num_errors):
+    qual_score = -10.0 * math.log10(num_errors/readlen)
+    return qual_score
+
+def scoremin(seq, ref, minlen):
+    bestq = 0
+    best_q_len = 0
+    perfect_len = 0
+
+    errors = 0
+    ls = len(seq)
+    lr = len(ref)
+    if lr < ls:
+        ls = lr
+
+    q = 0
+
+    for i in range(minlen):
+        if seq[i] != ref[i]:
+            errors += 1
+        if perfect_len == 0 and errors == 1:
+            perfect_len = i
+    if errors > 0:
+        q = qualscore(minlen, errors)
+        bestq = q
+        best_q_len = minlen
+    else:
+        perfect_len = minlen
+
+    for i in range(minlen,ls):
+        if seq[i] != ref[i]:
+            errors += 1
+        if errors > 0:
+            q = qualscore(i+1, errors)
+        else:
+            q = 0
+        if perfect_len == 0 and errors == 1:
+            perfect_len = i
+        if q > bestq:
+            bestq = q
+            best_q_len = i+1
+
+    return (bestq,best_q_len,perfect_len)
+
+def top_n_by_len(N, L):
+    forced_info = []
+    for i in range(len(info)):
+        # start calculating the Q-Score at length L (our minimum) and continue to the end of the read to get the best Q-Score
+        forced_info.append(scoremin(info[i][0], info[i][1], L))
+    forced_info = np.array(forced_info)
+
+    top_by_q_i = np.flip(np.argsort(forced_info[:,0]))
+    top_by_q = forced_info[top_by_q_i]
+    print('%d %dQ%.2f' % (N, L, np.mean(top_by_q[:N,0])))
 
 # set some defaults
 ref_name = 'phix174.fasta'
@@ -136,8 +179,8 @@ if out_filename:
 else:
     sam_filename = 'out.sam'
 
-# some stats we will track while mapping
-num12Q10 = 0
+# stores reads & ref so we can track some mapping stats
+info = []
 
 # map reads and write sam file
 sam = sam_utils.SamUtils(sam_filename)
@@ -163,15 +206,15 @@ for i, read in enumerate(reads):
             read_name = 'read_' + str(i)
             sam.AddRead(read, pos, ref_read, read_name)
 
-            # calc some stats on the read
-            len1Error = eval_read(read, ref_read, 1) # the max length with only 1 error
-            if len1Error >= 12:
-                num12Q10 += 1
+            # store reads & ref so we can calc some stats later
+            info.append((read, ref_read))
         else:
             print('failed to align read: %s to valid reference position' % read)
 
 if outfile:
     outfile.close()
 
-print('%d 12Q10' % num12Q10)
+top_n_by_len(50, 6)
+top_n_by_len(100, 10)
+top_n_by_len(500, 10)
 
