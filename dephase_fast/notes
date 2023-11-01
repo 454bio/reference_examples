@@ -1,4 +1,5 @@
 ./Basecall -f /Users/mdavey/454/runs/20231009_S0495/color_transformed_spots.csv
-./Basecall -f /Users/mdavey/454/runs/20231009_S0495/color_transformed_spots.csv -ie .127 -cf 0.102 -dr 0.016 > 20231009_S0495.out
+python3 eval_reads.py -f 20231009_S0495.grid.out
+./Basecall -f /Users/mdavey/454/runs/20231009_S0495/color_transformed_spots.csv -ie 0.134 -cf 0.102 -dr 0.016 > 20231009_S0495.out
 python3 scoring.py -f 20231009_S0495.out
 
