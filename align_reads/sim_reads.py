@@ -64,6 +64,7 @@ verbose = 0
 out_filename = None
 num_cycles = 30
 err_rate = 0.2
+num_reads = 10000
 
 # parce cmd-line args
 argcc = 1
@@ -81,6 +82,9 @@ while argcc < argc:
     if sys.argv[argcc] == '--err_rate':
         argcc += 1
         err_rate = float(sys.argv[argcc])
+    if sys.argv[argcc] == '--num_reads':
+        argcc += 1
+        num_reads = int(sys.argv[argcc])
     if sys.argv[argcc] == '-v':
         verbose += 1
     argcc += 1
@@ -91,7 +95,7 @@ if verbose > 0:
     print('loaded ref: %s\nlength: %d\n' % (description, len(ref)))
 
 # generate some random reads from it
-info = generate_reads(ref, 200, 10000) # mean 200bp at 3x coverage
+info = generate_reads(ref, 200, num_reads) # mean 200bp at 3x coverage
 
 # truncate the reads to our num cycles
 reads = []
