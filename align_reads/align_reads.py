@@ -3,6 +3,7 @@ import numpy as np
 import math
 import editdistance
 import sam_utils
+import matplotlib.pyplot as plt
 
 # simple function to load a fasta file
 def load_fasta(filename):
@@ -207,14 +208,82 @@ for i, read in enumerate(reads):
             sam.AddRead(read, pos, ref_read, read_name)
 
             # store reads & ref so we can calc some stats later
-            info.append((read, ref_read))
+            info.append((read, ref_read, rcomp, pos, i))
         else:
             print('failed to align read: %s to valid reference position' % read)
 
 if outfile:
     outfile.close()
 
+#####################
+# evaluations
+#####################
+
+print('raw')
 top_n_by_len(50, 6)
 top_n_by_len(100, 10)
 top_n_by_len(500, 10)
+
+# calculate and plot coverage
+# also use this to filter out junk
+info_filtered = []
+cov = np.zeros(len(ref))
+cov_filtered = np.zeros(len(ref))
+cov_starts = np.zeros(len(ref))
+for read in info:
+    score = scoremin(read[0], read[1], 13)
+    if score[0] >= 8.0:
+        start = read[3]
+        if read[2] is True: # rcomp:
+            start -= len(read[0])
+        cov[start:start+len(read[0])] += 1
+        cov_starts[start] += 1
+        if cov_starts[start] < 3:
+            info_filtered.append(read)
+            cov_filtered[start:start+len(read[0])] += 1
+
+print('num filtered: %d' % len(info_filtered))
+
+plt.figure('coverage')
+plt.plot(cov)
+
+plt.figure('starts')
+plt.plot(cov_starts)
+
+plt.figure('filtered coverage')
+plt.plot(cov_filtered)
+
+
+print('filtered')
+info = info_filtered
+top_n_by_len(50, 6)
+top_n_by_len(100, 10)
+top_n_by_len(500, 10)
+
+counts= {}
+counts['A'] = 0
+counts['C'] = 0
+counts['G'] = 0
+counts['T'] = 0
+
+avg_scores = 0.0
+filtered_filename = out_filename + '.filtered'
+with open(filtered_filename, 'w') as f:
+    for read in info_filtered:
+        bars = ''
+        for i in range(len(read[0])):
+            if read[0][i] == read[1][i]:
+                bars += '|'
+            else:
+                bars += ' '
+            counts[read[0][i]] += 1
+        f.write('@read: %d q-score: %.2f pos: %d rcomp: %s\n%s\n%s\n%s\n' % (read[4], scoremin(read[0], read[1], 13)[0], read[3], read[2], read[0], bars, read[1]))
+        avg_scores += scoremin(read[0], read[1], 13)[0]
+
+avg_scores /= len(info_filtered)
+print('%d filtered reads with avg q-score at full length: %.2f' % (len(info_filtered), avg_scores))
+
+print('base counts: A: %d  C: %d  G: %d  T: %d\n' % (counts['A'], counts['C'], counts['G'], counts['T']))
+
+plt.show()
 
