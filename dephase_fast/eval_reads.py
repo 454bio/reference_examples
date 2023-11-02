@@ -7,7 +7,7 @@ filename = 'stats.out'
 argcc = 1
 argc = len(sys.argv)
 while argcc < argc:
-    if sys.argv[argcc] == '-f':
+    if sys.argv[argcc] == '-i':
         argcc += 1
         filename = sys.argv[argcc]
     argcc += 1
@@ -32,7 +32,7 @@ with open(filename) as f:
                 perfectScores.append(float(tokens[16]))
 
             err = float(tokens[5])
-            if err < 3.0 and dist >= 5:
+            if err < 2.0:
                 phase = tokens[3].split('/')
                 ie.append(float(phase[0]))
                 cf.append(float(phase[1]))
