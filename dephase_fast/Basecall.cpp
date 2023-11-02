@@ -213,11 +213,11 @@ double CallBases(char *dnaTemplate, std::vector<Signal> &measuredSignal, std::ve
 PhaseParams GridSearch(char *dnaTemplate, std::vector<Signal> &measuredSignal, std::vector<double> &errorPerCycle)
 {
     // grid-search first, then call based on lowest error
-    double drmin = 0.01;
-    double drmax = 0.03;
+    double drmin = 0.005;
+    double drmax = 0.025;
     int    drnum = 5; // 10;
-    double iemin = 0.09;
-    double iemax = 0.15;
+    double iemin = 0.13;
+    double iemax = 0.19;
     int    ienum = 12; // 20;
     double cfmin = 0.07;
     double cfmax = 0.12;
