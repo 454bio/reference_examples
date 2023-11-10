@@ -231,14 +231,14 @@ cov = np.zeros(len(ref))
 cov_filtered = np.zeros(len(ref))
 cov_starts = np.zeros(len(ref))
 for read in info:
-    score = scoremin(read[0], read[1], 13)
-    if score[0] >= 8.0:
+    score = scoremin(read[0], read[1], 6)
+    if score[0] >= 6.0:
         start = read[3]
         if read[2] is True: # rcomp:
             start -= len(read[0])
         cov[start:start+len(read[0])] += 1
         cov_starts[start] += 1
-        if cov_starts[start] < 3:
+        if cov_starts[start] < 10:
             info_filtered.append(read)
             cov_filtered[start:start+len(read[0])] += 1
 
