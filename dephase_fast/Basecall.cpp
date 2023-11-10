@@ -145,6 +145,31 @@ void LoadSpotData(const char *filename, std::vector<SpotData> &spotData)
     }
 }
 
+void NormalizeSpotData(std::vector<SpotData> &spotData)
+{
+    int numSpots = spotData.size();
+    for(int i=0;i<numSpots;i++) {
+        int numCycles = spotData[i].vals.size();
+        Signal smin;
+        Signal smax;
+        for (int c=0;c<numCycles;c++) {
+            for(int b=0;b<4;b++) {
+                if (c==0 || spotData[i].vals[c].v[b] < smin.v[b])
+                    smin.v[b] = spotData[i].vals[c].v[b];
+                if (c==0 || spotData[i].vals[c].v[b] > smax.v[b])
+                    smax.v[b] = spotData[i].vals[c].v[b];
+            }
+        }
+        for (int c=0;c<numCycles;c++) {
+            for(int b=0;b<4;b++) {
+                spotData[i].vals[c].v[b] -= smin.v[b];
+                if ((smax.v[b] - smin.v[b]) > 0)
+                    spotData[i].vals[c].v[b] /= (smax.v[b] - smin.v[b]);
+            }
+        }
+    }
+}
+
 double CallBases(char *dnaTemplate, std::vector<Signal> &measuredSignal, std::vector<double> &errorPerCycle, double ie, double cf, double dr)
 {
     int numCycles = measuredSignal.size();
@@ -253,6 +278,7 @@ int main(int argc, char *argv[])
     bool gridsearch = true;
     double ie = 0.0, cf = 0.0, dr = 0.0;
     const char *fastQFileName = "out.fastq";
+    bool wantNormalize = false;
 
     int argcc = 1;
     while (argcc < argc) {
@@ -284,6 +310,10 @@ int main(int argc, char *argv[])
                 argcc++;
                 dr = atof(argv[argcc]);
             break;
+
+            case 'n':
+                wantNormalize = true;
+            break;
         }
         argcc++;
     }
@@ -295,6 +325,10 @@ int main(int argc, char *argv[])
     int numSpots = spotData.size();
     printf("Loaded %d spots\n", numSpots);
     int numCycles = spotData[0].vals.size();
+
+    // normalize
+    if (wantNormalize)
+        NormalizeSpotData(spotData);
 
     // grid-search phase-correct each spot
     int numReadsAll = 0; // needs to be min 4 bases correct
