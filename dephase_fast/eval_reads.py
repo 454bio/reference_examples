@@ -32,7 +32,7 @@ with open(filename) as f:
                 perfectScores.append(float(tokens[16]))
 
             err = float(tokens[5])
-            if err < 2.0:
+            if err < 3.0:
                 phase = tokens[3].split('/')
                 ie.append(float(phase[0]))
                 cf.append(float(phase[1]))
